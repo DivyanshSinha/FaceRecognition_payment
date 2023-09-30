@@ -17,6 +17,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.ModelAndView;
 
 import com.face.recognition.model.ImageDTO;
+import com.face.recognition.service.PaymentServiceImpl;
 
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.regions.Region;
@@ -34,6 +35,9 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 @RestController
 public class PaymentController {
+	
+	@Autowired
+	PaymentServiceImpl paymentService;
 //	
 //	@Autowired
 //	S3Client s3;
@@ -47,7 +51,7 @@ public class PaymentController {
 //	@Autowired
 	DynamoDbClient dynamodb;
 	
-	private final String BUCKET_NAME = "faces3bucket"; // Change to your bucket name
+	private final String BUCKET_NAME = "faces3bucket"; 
 	
 //	@Autowired
     S3Client s3;
@@ -61,50 +65,54 @@ public class PaymentController {
         this.dynamodb = DynamoDbClient.builder().region(Region.US_EAST_1).build();
     }
 	
-	@GetMapping("/openCamera")
-	public ModelAndView openCamera() {
-		System.out.println("Open camera triggered");
-		ModelAndView modelAndView = new ModelAndView();
-		modelAndView.setViewName("cameraView");  
-		return modelAndView;
-	}
+//	@GetMapping("/openCamera")
+//	public ModelAndView openCamera() {
+//		System.out.println("Open camera triggered");
+//		ModelAndView modelAndView = new ModelAndView();
+//		modelAndView.setViewName("cameraView");  
+//		return modelAndView;
+//	}
 	
 	@PostMapping("/storeImage")
 	public ResponseEntity<Map<String, String>> storeImage(@RequestBody ImageDTO imageDTO) throws Exception {
 		
 		System.out.println("Store images to S3 triggered");
 		
-	    String base64Image = imageDTO.getImage().split(",")[1];
-	    byte[] imageBytes = Base64.getDecoder().decode(base64Image);
-	    BufferedImage img = ImageIO.read(new ByteArrayInputStream(imageBytes));
-
-	    // Convert BufferedImage to byte array for S3
-	    ByteArrayOutputStream os = new ByteArrayOutputStream();
-	    ImageIO.write(img, "png", os);
-	    byte[] buffer = os.toByteArray();
-
-	    // Generate a random file name 
-	    Random rand = new Random();
-	    String fileName = "index/image_" + rand.nextInt(100000000) + ".png";
-
-	    // Creating a metadata map
-	    Map<String, String> metadataMap = new HashMap<>();
-	    metadataMap.put("fullname", imageDTO.getUsername()); 
-
-	    // Upload to S3
-	    PutObjectRequest putObjectRequest = PutObjectRequest.builder()
-	            .bucket(BUCKET_NAME)
-	            .key(fileName)
-	            .metadata(metadataMap)  // Setting metadata
-	            .build();
-
+		String response = paymentService.beginKYC(imageDTO);
+		
+//	    String base64Image = imageDTO.getImage().split(",")[1];
+//	    byte[] imageBytes = Base64.getDecoder().decode(base64Image);
+//	    BufferedImage img = ImageIO.read(new ByteArrayInputStream(imageBytes));
+//
+//	    // Convert BufferedImage to byte array for S3
+//	    ByteArrayOutputStream os = new ByteArrayOutputStream();
+//	    ImageIO.write(img, "png", os);
+//	    byte[] buffer = os.toByteArray();
+//
+//	    // Generate a random file name 
+//	    Random rand = new Random();
+//	    String fileName = "index/image_" + rand.nextInt(100000000) + ".png";
+//
+//	    // Creating a metadata map
+//	    Map<String, String> metadataMap = new HashMap<>();
+//	    metadataMap.put("fullname", imageDTO.getUsername()); 
+//
+//	    // Upload to S3
+//	    PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+//	            .bucket(BUCKET_NAME)
+//	            .key(fileName)
+//	            .metadata(metadataMap)  // Setting metadata
+//	            .build();
+//
+//	    
+//	    s3.putObject(putObjectRequest, software.amazon.awssdk.core.sync.RequestBody.fromBytes(buffer));
+//
+//	    System.out.println("Image uploaded to S3 with name: " + fileName);
 	    
-	    s3.putObject(putObjectRequest, software.amazon.awssdk.core.sync.RequestBody.fromBytes(buffer));
-
-	    System.out.println("Image uploaded to S3 with name: " + fileName);
-	    
+		System.out.println("Response form KYC api - "+response);
+		
 	    Map<String, String> responseMap = new HashMap<>();
-	    responseMap.put("message", "KYC done");
+	    responseMap.put("message", response);
 	    
 	    return ResponseEntity.ok(responseMap);
 	}
@@ -117,41 +125,43 @@ public class PaymentController {
 	    
 	    String base64Image = payload.get("image").split(",")[1];
 	    byte[] imageBytes = Base64.getDecoder().decode(base64Image);
+	    
+	    String result = paymentService.validateFace(imageBytes);
 		
 	    //byte[] imageBytes = file.getBytes();
 
-	    SearchFacesByImageRequest request = SearchFacesByImageRequest.builder()
-	            .collectionId("facerecognition_collection")
-	            .image(Image.builder().bytes(SdkBytes.fromByteArray(imageBytes)).build())
-	            .build();
-
-	    SearchFacesByImageResponse response = rekognition.searchFacesByImage(request);
-
-	    boolean found = false;
-	    StringBuilder result = new StringBuilder();
-
-	    for (FaceMatch match : response.faceMatches()) {
-	        GetItemRequest getItemRequest = GetItemRequest.builder()
-	                .tableName("face_recognition")
-	                .key(Collections.singletonMap("RekognitionId", AttributeValue.builder().s(match.face().faceId()).build()))
-	                .build();
-
-	        Map<String, AttributeValue> face = dynamodb.getItem(getItemRequest).item();
-
-	        if (face != null && face.containsKey("FullName")) {
-	            result.append("Found Person: ").append(face.get("FullName").s()).append("\n");
-	            found = true;
-	        }
-	    }
-
-	    if (!found) {
-	        result.append("Person cannot be recognized");
-	    }
+//	    SearchFacesByImageRequest request = SearchFacesByImageRequest.builder()
+//	            .collectionId("facerecognition_collection")
+//	            .image(Image.builder().bytes(SdkBytes.fromByteArray(imageBytes)).build())
+//	            .build();
+//
+//	    SearchFacesByImageResponse response = rekognition.searchFacesByImage(request);
+//
+//	    boolean found = false;
+//	    StringBuilder result = new StringBuilder();
+//
+//	    for (FaceMatch match : response.faceMatches()) {
+//	        GetItemRequest getItemRequest = GetItemRequest.builder()
+//	                .tableName("face_recognition")
+//	                .key(Collections.singletonMap("RekognitionId", AttributeValue.builder().s(match.face().faceId()).build()))
+//	                .build();
+//
+//	        Map<String, AttributeValue> face = dynamodb.getItem(getItemRequest).item();
+//
+//	        if (face != null && face.containsKey("FullName")) {
+//	            result.append("Found Person: ").append(face.get("FullName").s()).append("\n");
+//	            found = true;
+//	        }
+//	    }
+//
+//	    if (!found) {
+//	        result.append("Person cannot be recognized");
+//	    }
 	    
-	    System.out.println(result.toString());
+	    System.out.println("Result for validate face - "+result);
 	    
 	    Map<String, String> responseMap = new HashMap<>();
-	    responseMap.put("message", result.toString());
+	    responseMap.put("message", result);
 	    
 	    return ResponseEntity.ok(responseMap);
 	}
